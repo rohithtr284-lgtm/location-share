@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Share Your Location</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #f3f5f9;
+            color: #1d2433;
+        }
+
+        .card {
+            width: 100%;
+            max-width: 460px;
+            padding: 32px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            margin-top: 0;
+            text-align: center;
+        }
+
+        .description {
+            line-height: 1.6;
+            color: #555e70;
+            text-align: center;
+        }
+
+        .notice {
+            margin: 22px 0;
+            padding: 15px;
+            border-radius: 12px;
+            background: #eef4ff;
+            line-height: 1.5;
+            font-size: 14px;
+        }
+
+        .consent {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            margin: 20px 0;
+            line-height: 1.5;
+        }
+
+        .consent input {
+            margin-top: 4px;
+            width: 18px;
+            height: 18px;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 12px;
+            background: #2563eb;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin-top: 20px;
+            padding: 14px;
+            border-radius: 10px;
+            display: none;
+            line-height: 1.5;
+        }
+
+        .success {
+            display: block !important;
+            color: #126333;
+            background: #e8f8ef;
+        }
+
+        .error {
+            display: block !important;
+            color: #8b1d1d;
+            background: #feecec;
+        }
+
+        .loading {
+            display: block !important;
+            color: #664d03;
+            background: #fff4ce;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="card">
+        <h1>Share Your Location</h1>
+
+        <p class="description">
+            This page will share your current latitude and longitude
+            with the person who sent you this link.
+        </p>
+
+        <div class="notice">
+            Your location will only be requested after you press
+            <strong>Share my location</strong>. Your browser will also
+            ask you to approve location access.
+        </div>
+
+        <label class="consent">
+            <input type="checkbox" id="consentCheckbox">
+
+            <span>
+                I understand that my current location will be shared,
+                and I voluntarily agree to continue.
+            </span>
+        </label>
+
+        <button id="shareButton" disabled>
+            Share my location
+        </button>
+
+        <div id="status"></div>
+    </main>
+
+    <script>
+        const consentCheckbox =
+            document.getElementById("consentCheckbox");
+
+        const shareButton =
+            document.getElementById("shareButton");
+
+        const statusBox =
+            document.getElementById("status");
+
+        consentCheckbox.addEventListener("change", () => {
+            shareButton.disabled = !consentCheckbox.checked;
+        });
+
+        function showStatus(message, type) {
+            statusBox.textContent = message;
+            statusBox.className = type;
+        }
+
+        function getTokenFromUrl() {
+            const pathParts = window.location.pathname
+                .split("/")
+                .filter(Boolean);
+
+            if (
+                pathParts.length !== 2 ||
+                pathParts[0] !== "share"
+            ) {
+                return null;
+            }
+
+            return pathParts[1];
+        }
+
+        async function submitLocation(position) {
+            const token = getTokenFromUrl();
+
+            if (!token) {
+                showStatus(
+                    "This sharing link is invalid.",
+                    "error"
+                );
+                shareButton.disabled = false;
+                return;
+            }
+
+            const payload = {
+                token: token,
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+                shared_at: new Date(
+                    position.timestamp
+                ).toISOString()
+            };
+
+            try {
+                const response = await fetch("/api/location", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        result.detail ||
+                        "Unable to share the location."
+                    );
+                }
+
+                showStatus(
+                    "Your location was shared successfully.",
+                    "success"
+                );
+
+                shareButton.textContent = "Location shared";
+                shareButton.disabled = true;
+                consentCheckbox.disabled = true;
+            } catch (error) {
+                showStatus(
+                    error.message ||
+                    "Unable to send your location.",
+                    "error"
+                );
+
+                shareButton.disabled = false;
+            }
+        }
+
+        function handleLocationError(error) {
+            let message =
+                "Unable to access your location.";
+
+            if (error.code === error.PERMISSION_DENIED) {
+                message =
+                    "Location permission was denied. No location was shared.";
+            } else if (
+                error.code === error.POSITION_UNAVAILABLE
+            ) {
+                message =
+                    "Your current location is unavailable.";
+            } else if (error.code === error.TIMEOUT) {
+                message =
+                    "The location request timed out. Please try again.";
+            }
+
+            showStatus(message, "error");
+            shareButton.disabled = false;
+        }
+
+        shareButton.addEventListener("click", () => {
+            if (!consentCheckbox.checked) {
+                showStatus(
+                    "Please confirm your consent first.",
+                    "error"
+                );
+                return;
+            }
+
+            if (!navigator.geolocation) {
+                showStatus(
+                    "This browser does not support location sharing.",
+                    "error"
+                );
+                return;
+            }
+
+            shareButton.disabled = true;
+
+            showStatus(
+                "Waiting for location permission...",
+                "loading"
+            );
+
+            navigator.geolocation.getCurrentPosition(
+                submitLocation,
+                handleLocationError,
+                {
+                    enableHighAccuracy: true,
+                    timeout: 20000,
+                    maximumAge: 0
+                }
+            );
+        });
+    </script>
+</body>
+</html>
