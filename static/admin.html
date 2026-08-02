@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Location Admin</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 25px;
+            font-family: Arial, sans-serif;
+            background: #f3f5f9;
+            color: #1d2433;
+        }
+
+        .container {
+            max-width: 950px;
+            margin: auto;
+        }
+
+        .card {
+            margin-bottom: 20px;
+            padding: 24px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
+        }
+
+        input {
+            width: 100%;
+            margin-bottom: 12px;
+            padding: 13px;
+            border: 1px solid #cbd1dc;
+            border-radius: 10px;
+            font-size: 15px;
+        }
+
+        button {
+            padding: 13px 18px;
+            border: none;
+            border-radius: 10px;
+            background: #2563eb;
+            color: white;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        .secondary {
+            background: #1f2937;
+        }
+
+        .share-link {
+            margin-top: 15px;
+            padding: 14px;
+            background: #eef4ff;
+            border-radius: 10px;
+            overflow-wrap: anywhere;
+        }
+
+        .location {
+            margin-top: 15px;
+            padding: 17px;
+            border: 1px solid #e1e5ec;
+            border-radius: 12px;
+        }
+
+        .location p {
+            margin: 7px 0;
+        }
+
+        a {
+            color: #2563eb;
+            font-weight: bold;
+        }
+
+        #message {
+            margin-top: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="container">
+        <section class="card">
+            <h1>Location Sharing Admin</h1>
+
+            <input
+                type="password"
+                id="adminKey"
+                placeholder="Enter your private admin key"
+            >
+
+            <button id="createLinkButton">
+                Create sharing link
+            </button>
+
+            <button
+                id="loadLocationsButton"
+                class="secondary"
+            >
+                Load received locations
+            </button>
+
+            <div id="message"></div>
+            <div id="generatedLink"></div>
+        </section>
+
+        <section class="card">
+            <h2>Received locations</h2>
+            <div id="locations"></div>
+        </section>
+    </main>
+
+    <script>
+        const adminKeyInput =
+            document.getElementById("adminKey");
+
+        const messageBox =
+            document.getElementById("message");
+
+        const generatedLinkBox =
+            document.getElementById("generatedLink");
+
+        const locationsBox =
+            document.getElementById("locations");
+
+        function getAdminKey() {
+            return adminKeyInput.value.trim();
+        }
+
+        function showMessage(message) {
+            messageBox.textContent = message;
+        }
+
+        async function createLink() {
+            const adminKey = getAdminKey();
+
+            if (!adminKey) {
+                showMessage("Enter your admin key.");
+                return;
+            }
+
+            showMessage("Creating link...");
+
+            try {
+                const response = await fetch("/api/links", {
+                    method: "POST",
+                    headers: {
+                        "X-Admin-Key": adminKey
+                    }
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        result.detail ||
+                        "Unable to create link"
+                    );
+                }
+
+                generatedLinkBox.innerHTML = `
+                    <div class="share-link">
+                        <strong>Send this link:</strong><br><br>
+                        <a
+                            href="${result.share_url}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            ${result.share_url}
+                        </a>
+                    </div>
+                `;
+
+                showMessage("Sharing link created.");
+            } catch (error) {
+                showMessage(error.message);
+            }
+        }
+
+        async function loadLocations() {
+            const adminKey = getAdminKey();
+
+            if (!adminKey) {
+                showMessage("Enter your admin key.");
+                return;
+            }
+
+            showMessage("Loading locations...");
+            locationsBox.innerHTML = "";
+
+            try {
+                const response = await fetch("/api/locations", {
+                    headers: {
+                        "X-Admin-Key": adminKey
+                    }
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        result.detail ||
+                        "Unable to load locations"
+                    );
+                }
+
+                if (result.locations.length === 0) {
+                    locationsBox.innerHTML =
+                        "<p>No location has been shared yet.</p>";
+
+                    showMessage("");
+                    return;
+                }
+
+                result.locations.forEach((location) => {
+                    const locationElement =
+                        document.createElement("article");
+
+                    locationElement.className = "location";
+
+                    locationElement.innerHTML = `
+                        <p>
+                            <strong>Latitude:</strong>
+                            ${location.latitude}
+                        </p>
+
+                        <p>
+                            <strong>Longitude:</strong>
+                            ${location.longitude}
+                        </p>
+
+                        <p>
+                            <strong>Accuracy:</strong>
+                            ${
+                                location.accuracy
+                                    ? Math.round(location.accuracy)
+                                    : "Unknown"
+                            } metres
+                        </p>
+
+                        <p>
+                            <strong>Received:</strong>
+                            ${new Date(
+                                location.received_at
+                            ).toLocaleString()}
+                        </p>
+
+                        <p>
+                            <a
+                                href="${location.google_maps_url}"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                Open in Google Maps
+                            </a>
+                        </p>
+                    `;
+
+                    locationsBox.appendChild(
+                        locationElement
+                    );
+                });
+
+                showMessage(
+                    `${result.locations.length} location(s) loaded.`
+                );
+            } catch (error) {
+                showMessage(error.message);
+            }
+        }
+
+        document
+            .getElementById("createLinkButton")
+            .addEventListener("click", createLink);
+
+        document
+            .getElementById("loadLocationsButton")
+            .addEventListener("click", loadLocations);
+    </script>
+</body>
+</html>
